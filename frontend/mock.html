@@ -1,8 +1,8 @@
 <!doctype html>
 <!--
-  Mock player: バックエンド (uvicorn / NEAR / XRPL) を起動しなくても、
-  WebSocket と同じイベント列を再生して UI を試せる。
-  使い方: open frontend/mock.html
+  Mock player: バックエンド未起動でも全フローを再生できる。
+  open frontend/mock.html  もしくは python3 -m http.server -d frontend
+  ?scenario=replan で「再提案」シナリオを再生
 -->
 <html lang="ja">
 <head>
@@ -39,8 +39,9 @@
   </div>
   <div class="topright">
     <div class="lang-switch" role="group">
-      <button data-lang="ja" class="lang-btn active">日本語</button>
+      <button data-lang="ja" class="lang-btn">日本語</button>
       <button data-lang="en" class="lang-btn">English</button>
+      <button data-lang="both" class="lang-btn active">日 / EN</button>
     </div>
     <div class="status-pill"><span class="dot"></span><div><div class="status-title" data-i18n="statusTitle">System healthy</div><div class="status-sub" data-i18n="statusSub">All services operational</div></div></div>
   </div>
@@ -50,7 +51,11 @@
   <aside class="left">
     <section class="card">
       <div class="card-head"><span class="step-num">1</span><h2 data-i18n="step1Title">Natural-language request</h2></div>
-      <textarea id="request" rows="6" data-i18n-ph="requestPlaceholder">来週バンコクに行きたい、予算500ドル</textarea>
+      <textarea id="request" rows="5" data-i18n-ph="requestPlaceholder">来週バンコクに行きたい、予算500ドル</textarea>
+      <div class="dates">
+        <label class="field"><span data-i18n="startDateLabel">Start date</span><input id="startDate" type="date" /></label>
+        <label class="field"><span data-i18n="endDateLabel">End date</span><input id="endDate" type="date" /></label>
+      </div>
       <label class="field"><span data-i18n="budgetLabel">Budget (USD)</span><input id="budget" type="number" value="500" /></label>
       <button id="run" class="btn-primary"><span class="play">▶</span> <span data-i18n="orchestrate">Orchestrate</span></button>
       <div class="endpoint-hint">POST /api/run (mock)</div>
@@ -72,7 +77,7 @@
 </main>
 
 <script>
-const MOCK_EVENTS = [
+const HAPPY = [
   {delay:0,    e:{type:"flow.start", request:"来週バンコクに行きたい、予算500ドル", budget_usd:500}},
   {delay:200,  e:{type:"ironclaw.checking"}},
   {delay:600,  e:{type:"ironclaw.ready", available:true, announce:{gateway_running:true, binary_version:"ironclaw 0.27.0", available:true}}},
@@ -92,16 +97,26 @@ const MOCK_EVENTS = [
   {delay:1500, e:{type:"payment.confirmed", agent:"LocalGuideAgent", receipt:{chain:"xrpl", tx_hash:"C9D6xxxxxxxxxxxxxxxxxxxxxxxxx7hQw", explorer_url:"#", amount_usd:75, amount_native:7.5, receiver:"xrpl:guide-wallet"}}},
   {delay:500,  e:{type:"flow.done", total_paid_usd:580, receipts:[{},{},{}]}},
 ];
+const REPLAN = [
+  {delay:0,    e:{type:"flow.start", request:"来週バンコクに行きたい、予算500ドル", budget_usd:500}},
+  {delay:300,  e:{type:"ironclaw.ready", available:true, announce:{binary_version:"ironclaw 0.27.0"}}},
+  {delay:300,  e:{type:"agent.thinking", agent:"FlightAgent", chain:"near"}},
+  {delay:50,   e:{type:"agent.thinking", agent:"HotelAgent", chain:"near"}},
+  {delay:50,   e:{type:"agent.thinking", agent:"LocalGuideAgent", chain:"xrpl"}},
+  {delay:1500, e:{type:"agent.quoted", agent:"FlightAgent", quote:{agent:"FlightAgent", description:"Round-trip economy flight", amount_usd:295, chain:"near", receiver:"flight-701307.testnet"}}},
+  {delay:400,  e:{type:"agent.quoted", agent:"HotelAgent", quote:{agent:"HotelAgent", description:"3 nights", amount_usd:210, chain:"near", receiver:"hotel-778201.testnet"}}},
+  {delay:300,  e:{type:"agent.error", agent:"LocalGuideAgent", error:"timeout from local guide marketplace"}},
+  {delay:600,  e:{type:"flow.needs_replan", reason:"quote_failed", failed_agents:["LocalGuideAgent"], message:"見積失敗のため決済中止", message_en:"Aborted due to quote failure"}},
+];
 
-class FakeSocket {
-  constructor() { setTimeout(()=>this.onopen&&this.onopen(),10); }
-  send() {} close() {}
-}
+class FakeSocket { constructor() { setTimeout(()=>this.onopen&&this.onopen(),10); } send() {} close() {} }
 const sockets = [];
 window.WebSocket = function(){ const s=new FakeSocket(); sockets.push(s); return s; };
 
+const SCENARIO = new URLSearchParams(location.search).get("scenario") === "replan" ? REPLAN : HAPPY;
+
 async function play() {
-  for (const {delay,e} of MOCK_EVENTS) {
+  for (const {delay,e} of SCENARIO) {
     await new Promise(r=>setTimeout(r,delay));
     const data = JSON.stringify({ts: Date.now()/1000, ...e});
     sockets.forEach(s => s.onmessage && s.onmessage({data}));
@@ -110,11 +125,7 @@ async function play() {
 
 document.addEventListener("DOMContentLoaded", () => {
   const btn = document.getElementById("run");
-  btn.addEventListener("click", (ev) => {
-    ev.preventDefault();
-    btn.disabled = true;
-    play().then(()=>btn.disabled=false);
-  });
+  btn.addEventListener("click", (ev) => { ev.preventDefault(); btn.disabled = true; play().then(()=>btn.disabled=false); });
   setTimeout(()=>btn.click(), 500);
 });
 </script>

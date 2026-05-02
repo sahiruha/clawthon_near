@@ -33,6 +33,8 @@ ws_manager = WSManager()
 class RunRequest(BaseModel):
     request: str
     budget_usd: float = 500.0
+    start_date: str | None = None  # 雑な日付文字列でもOK ("2026-05-10" or "5月10日")
+    end_date: str | None = None
 
 
 @app.get("/")
@@ -45,9 +47,20 @@ app.mount("/static", StaticFiles(directory=str(FRONTEND)), name="static")
 
 @app.post("/api/run")
 async def run(payload: RunRequest) -> dict:
-    # フローはバックグラウンドで実行し、即レスポンス
-    asyncio.create_task(run_flow(payload.request, payload.budget_usd, ws_manager))
-    return {"started": True, "request": payload.request, "budget_usd": payload.budget_usd}
+    # 日程が来ていれば user_request の末尾に併記する (エージェントが推論で使う)
+    req = payload.request.strip()
+    if payload.start_date or payload.end_date:
+        s = payload.start_date or "?"
+        e = payload.end_date or "?"
+        req += f"\n[Schedule: {s} 〜 {e}]"
+    asyncio.create_task(run_flow(req, payload.budget_usd, ws_manager))
+    return {
+        "started": True,
+        "request": req,
+        "budget_usd": payload.budget_usd,
+        "start_date": payload.start_date,
+        "end_date": payload.end_date,
+    }
 
 
 @app.get("/api/health")

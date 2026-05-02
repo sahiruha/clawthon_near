@@ -15,6 +15,24 @@ from xrpl.wallet import Wallet
 USD_TO_XRP = 0.1  # デモ用固定レート (testnet faucet 残高100 XRPで複数回流せるよう小さく)
 
 
+def usd_to_drops(amount_usd: float) -> int:
+    return int(amount_usd * USD_TO_XRP * 1_000_000)
+
+
+async def get_balance_drops() -> int:
+    """orchestrator アカウントの XRP 残高 (drops) を返す。"""
+    from xrpl.models.requests import AccountInfo
+
+    seed = os.getenv("XRPL_ORCHESTRATOR_SEED")
+    network = os.getenv("XRPL_NETWORK", "wss://s.altnet.rippletest.net:51233")
+    if not seed:
+        return 0
+    wallet = Wallet.from_seed(seed)
+    async with AsyncWebsocketClient(network) as client:
+        info = await client.request(AccountInfo(account=wallet.classic_address, ledger_index="validated"))
+    return int(info.result["account_data"]["Balance"])
+
+
 async def transfer_usd(destination: str, amount_usd: float) -> dict:
     """orchestrator -> destination に XRP で送金し、TX hash を返す。"""
     seed = os.getenv("XRPL_ORCHESTRATOR_SEED")

@@ -38,6 +38,11 @@ async def listen(stop_event: asyncio.Event) -> None:
                     print(f"[{t}] {detail}")
                     stop_event.set()
                     break
+                elif t == "flow.needs_replan":
+                    detail = f"reason={event.get('reason')} | {event.get('message', '')}"
+                    print(f"[{t}] {detail}")
+                    stop_event.set()
+                    break
                 print(f"[{t}] {detail}")
         finally:
             pass

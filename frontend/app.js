@@ -1,4 +1,4 @@
-// Live Flow renderer with i18n + step counter + status pills
+// Live Flow renderer (bilingual labels + replan detection)
 (() => {
   const flow = document.getElementById("flow");
   const flowEmpty = document.getElementById("flowEmpty");
@@ -6,6 +6,8 @@
   const runBtn = document.getElementById("run");
   const reqEl = document.getElementById("request");
   const budgetEl = document.getElementById("budget");
+  const startDateEl = document.getElementById("startDate");
+  const endDateEl = document.getElementById("endDate");
   const autoscrollEl = document.getElementById("autoscroll");
 
   const wsProto = location.protocol === "https:" ? "wss" : "ws";
@@ -35,10 +37,9 @@
   function fmtTs(ts) {
     return new Date(ts * 1000).toLocaleTimeString([], { hour12: false });
   }
-
   function pad2(n) { return String(n).padStart(2, "0"); }
 
-  // SVG icons (stroke=currentColor)
+  // SVG icons
   const ICONS = {
     rocket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a8 8 0 0 1 8-8h6v6a8 8 0 0 1-8 8H5z"/><path d="M5 19l-2 2"/><circle cx="14" cy="10" r="2"/></svg>',
     pulse:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
@@ -52,6 +53,7 @@
     check:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
     error:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 17h.01"/></svg>',
     finish: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
+    stop:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9 9l6 6M15 9l-6 6"/></svg>',
   };
 
   function setIcon(node, name) {
@@ -60,20 +62,70 @@
     ic.textContent = "";
     const wrap = document.createElement("span");
     wrap.style.lineHeight = "0";
-    // Static SVG defined above (no user input). Safe to inline.
-    wrap.innerHTML = ICONS[name] || ICONS.pulse; // eslint-disable-line
+    wrap.innerHTML = ICONS[name] || ICONS.pulse; // 静的SVGのみ. eslint-disable-line
     ic.appendChild(wrap);
   }
 
-  function makeNode({ category, icon, label, meta, status = "active", ts, big = false }) {
+  // ---- bilingual label/meta builder ----
+  // `label` / `meta` の値は `{primary, secondary}` の object か string を受ける
+  function asDual(v) {
+    if (v == null) return { primary: "", secondary: null };
+    if (typeof v === "string") return { primary: v, secondary: null };
+    return { primary: v.primary || "", secondary: v.secondary || null };
+  }
+  function renderDual(target, dual, primaryCls = "lbl-primary", secondaryCls = "lbl-secondary") {
+    target.textContent = "";
+    const p = el("span", { cls: primaryCls, text: dual.primary });
+    target.appendChild(p);
+    if (dual.secondary) {
+      const s = el("span", { cls: secondaryCls, text: dual.secondary });
+      target.appendChild(s);
+    }
+  }
+  function setLabel(node, dualOrStr) {
+    const lbl = node.querySelector(".label");
+    if (lbl) renderDual(lbl, asDual(dualOrStr));
+  }
+  function setMeta(node, str) {
+    const m = node.querySelector(".meta");
+    if (m) m.textContent = str || "";
+  }
+  function setMetaWithLink(node, prefix, link) {
+    const m = node.querySelector(".meta");
+    if (!m) return;
+    m.textContent = "";
+    if (prefix) m.appendChild(document.createTextNode(prefix + " "));
+    m.appendChild(el("a", { text: link.text, href: link.href, target: "_blank" }));
+  }
+  function setTs(node, ts) { const x = node.querySelector(".ts"); if (x && ts) x.textContent = fmtTs(ts); }
+
+  function pillText(status) {
+    const T = window.t || ((k) => k);
+    if (status === "active") return T("stStatusActive");
+    if (status === "success") return T("stStatusSuccess");
+    if (status === "error")   return T("stStatusError");
+    if (status === "done")    return T("stStatusDone");
+    if (status === "replan")  return T("stStatusReplan");
+    return status.toUpperCase();
+  }
+  function setStatus(node, status) {
+    if (!node) return;
+    node.classList.remove("status-active", "status-success", "status-error", "status-done", "status-replan");
+    node.classList.add(`status-${status}`);
+    const pill = node.querySelector(".pill");
+    if (pill) pill.textContent = pillText(status);
+  }
+
+  function makeNode({ category, icon, label, meta, status = "active", ts, kind = "" }) {
     if (flowEmpty) flowEmpty.style.display = "none";
     stepCounter += 1;
     const node = document.createElement("li");
-    node.className = `node cat-${category} status-${status}` + (big ? " done" : "");
+    node.className = `node cat-${category} status-${status}` + (kind ? " " + kind : "");
 
     const step = el("div", { cls: "step", text: pad2(stepCounter) });
     const ic = el("div", { cls: "icon" });
-    const labelEl = el("div", { cls: "label", text: label });
+    const labelEl = el("div", { cls: "label" });
+    renderDual(labelEl, asDual(label));
     const metaEl = el("div", { cls: "meta", text: meta || "" });
     const right = el("div", { cls: "right-meta" });
     const pill = el("div", { cls: "pill", text: pillText(status) });
@@ -93,32 +145,6 @@
     return node;
   }
 
-  function pillText(status) {
-    if (status === "active") return window.t ? window.t("stStatusActive") : "ACTIVE";
-    if (status === "success") return window.t ? window.t("stStatusSuccess") : "SUCCESS";
-    if (status === "error") return window.t ? window.t("stStatusError") : "ERROR";
-    if (status === "done") return window.t ? window.t("stStatusDone") : "DONE";
-    return status.toUpperCase();
-  }
-
-  function setStatus(node, status) {
-    if (!node) return;
-    node.classList.remove("status-active", "status-success", "status-error", "status-done");
-    node.classList.add(`status-${status}`);
-    const pill = node.querySelector(".pill");
-    if (pill) pill.textContent = pillText(status);
-  }
-
-  function setLabel(node, text)  { const x = node.querySelector(".label"); if (x) x.textContent = text; }
-  function setMeta(node, text)   { const x = node.querySelector(".meta");  if (x) x.textContent = text; }
-  function setMetaWithLink(node, text, link) {
-    const x = node.querySelector(".meta"); if (!x) return;
-    x.textContent = "";
-    if (text) x.appendChild(document.createTextNode(text + " "));
-    x.appendChild(el("a", { text: link.text, href: link.href, target: "_blank" }));
-  }
-  function setTs(node, ts) { const x = node.querySelector(".ts"); if (x && ts) x.textContent = fmtTs(ts); }
-
   function autoscroll() {
     if (autoscrollEl?.checked) {
       const right = document.querySelector(".right.card");
@@ -126,9 +152,7 @@
     }
   }
 
-  function chainCategory(chain) {
-    return chain === "xrpl" ? "xrpl" : "near";
-  }
+  function chainCategory(chain) { return chain === "xrpl" ? "xrpl" : "near"; }
   function agentIcon(agent, chain) {
     if (agent === "FlightAgent") return "plane";
     if (agent === "HotelAgent") return "hotel";
@@ -137,7 +161,6 @@
   }
 
   function appendReceipt(agent, r) {
-    // first receipt: clear empty placeholder
     const empty = receipts.querySelector(".receipts-empty");
     if (empty) empty.remove();
 
@@ -154,11 +177,9 @@
       href: r.explorer_url,
       target: "_blank",
     }));
-
     const right = el("div", { cls: "right-col" });
     right.appendChild(el("div", { cls: "amount", text: `$${r.amount_usd}` }));
     right.appendChild(el("span", { cls: "pill", text: window.t ? window.t("confirmed") : "CONFIRMED" }));
-
     card.appendChild(ic);
     card.appendChild(body);
     card.appendChild(right);
@@ -168,64 +189,56 @@
   // ---------- event handler ----------
   function handle(event) {
     const T = window.t || ((k) => k);
+    const D = window.tDual || ((k, ...p) => ({ primary: T(k, ...p), secondary: null }));
     const t = event.type;
 
     if (t === "flow.start") {
       flow.textContent = "";
       receipts.textContent = "";
-      // restore empty placeholder for receipts
-      const empty = el("div", { cls: "receipts-empty", text: T("receiptsEmpty") });
+      const empty = el("div", { cls: "receipts-empty" });
+      const dE = D("receiptsEmpty");
+      empty.appendChild(el("div", { text: dE.primary }));
+      if (dE.secondary) empty.appendChild(el("div", { text: dE.secondary, cls: "i18n-secondary" }));
       receipts.appendChild(empty);
-
       if (flowEmpty) flowEmpty.style.display = "none";
       agentNodes = {};
       stepCounter = 0;
-      const n = makeNode({
+      makeNode({
         category: "ironclaw",
         icon: "rocket",
-        label: T("flowStarted", event.request),
-        meta: T("budgetMeta", event.budget_usd),
+        label: D("flowStarted", event.request),
+        meta: D("budgetMeta", event.budget_usd).primary,
         status: "success",
         ts: event.ts,
       });
-      // step:01 のフロー開始は紫
     } else if (t === "ironclaw.checking") {
-      const n = makeNode({
-        category: "ironclaw",
-        icon: "pulse",
-        label: T("icCheck"),
-        meta: "",
-        status: "active",
-        ts: event.ts,
+      agentNodes._ironclawCheck = makeNode({
+        category: "ironclaw", icon: "pulse",
+        label: D("icCheck"), meta: "", status: "active", ts: event.ts,
       });
-      agentNodes._ironclawCheck = n;
     } else if (t === "ironclaw.ready") {
       const ann = event.announce || {};
       const ver = ann.binary_version || "";
       makeNode({
-        category: "ironclaw",
-        icon: "shield",
-        label: event.available ? T("icReady") : T("icOffline"),
+        category: "ironclaw", icon: "shield",
+        label: event.available ? D("icReady") : D("icOffline"),
         meta: ver ? T("icBinary", ver) : "",
         status: event.available ? "success" : "error",
         ts: event.ts,
       });
     } else if (t === "agent.thinking") {
       const cat = chainCategory(event.chain);
-      const n = makeNode({
-        category: cat,
-        icon: agentIcon(event.agent, event.chain),
-        label: T("agentThinking", event.agent),
+      agentNodes[event.agent] = makeNode({
+        category: cat, icon: agentIcon(event.agent, event.chain),
+        label: D("agentThinking", event.agent),
         meta: T("agentChain", event.chain),
-        status: "active",
-        ts: event.ts,
+        status: "active", ts: event.ts,
       });
-      agentNodes[event.agent] = n;
     } else if (t === "agent.quoted") {
       const n = agentNodes[event.agent];
       const q = event.quote;
       if (n) {
-        setLabel(n, T("agentQuoted", event.agent, q.description));
+        setLabel(n, D("agentQuoted", event.agent, q.description));
         setMeta(n, `$${q.amount_usd} → ${q.chain}:${(q.receiver || "?").slice(0, 24)}`);
         setStatus(n, "success");
         setTs(n, event.ts);
@@ -233,65 +246,48 @@
     } else if (t === "agent.error") {
       const n = agentNodes[event.agent];
       if (n) {
-        setLabel(n, T("agentFailed", event.agent));
+        setLabel(n, D("agentFailed", event.agent));
         setMeta(n, String(event.error || "").slice(0, 100));
         setStatus(n, "error");
         setTs(n, event.ts);
       }
     } else if (t === "optimizer.thinking") {
-      const n = makeNode({
-        category: "nearai",
-        icon: "cloud",
-        label: T("optimizerThinking", event.model || "Qwen3-30B"),
-        meta: "",
-        status: "active",
-        ts: event.ts,
+      agentNodes._optimizer = makeNode({
+        category: "nearai", icon: "cloud",
+        label: D("optimizerThinking", event.model || "Qwen3-30B"),
+        meta: "", status: "active", ts: event.ts,
       });
-      agentNodes._optimizer = n;
     } else if (t === "optimizer.decided") {
       const n = agentNodes._optimizer;
       const d = event.decision || {};
+      const list = (d.accepted || []).map(a => a.replace("Agent","")).join(", ");
       if (n) {
-        const list = (d.accepted || []).map(a => a.replace("Agent","")).join(", ");
-        setLabel(n, T("optimizerDecided", list));
+        setLabel(n, D("optimizerDecided", list));
         setMeta(n, `$${d.total_usd} • ${(d.reasoning || "").slice(0, 80)}`);
         setStatus(n, "success");
         setTs(n, event.ts);
       }
-      // 採択結果を補助ノードとして再表示 (キラキラ用)
-      const list2 = (d.accepted || []).map(a => a.replace("Agent","")).join(", ");
-      makeNode({
-        category: "nearai",
-        icon: "star",
-        label: T("optimizerDecided", list2),
-        meta: `$${d.total_usd} • ${(d.reasoning || "").slice(0, 80)}`,
-        status: "success",
-        ts: event.ts,
-      });
     } else if (t === "optimizer.error") {
       const n = agentNodes._optimizer;
       if (n) {
-        setLabel(n, T("optimizerError"));
+        setLabel(n, D("optimizerError"));
         setMeta(n, String(event.error || "").slice(0, 100));
         setStatus(n, "error");
         setTs(n, event.ts);
       }
     } else if (t === "payment.sending") {
       const cat = chainCategory(event.chain);
-      const n = makeNode({
-        category: cat,
-        icon: "wallet",
-        label: T("paying", event.agent, event.chain),
+      agentNodes["pay:" + event.agent] = makeNode({
+        category: cat, icon: "wallet",
+        label: D("paying", event.agent, event.chain),
         meta: `$${event.amount_usd}`,
-        status: "active",
-        ts: event.ts,
+        status: "active", ts: event.ts,
       });
-      agentNodes["pay:" + event.agent] = n;
     } else if (t === "payment.confirmed") {
       const n = agentNodes["pay:" + event.agent];
       const r = event.receipt || {};
       if (n) {
-        setLabel(n, T("paid", event.agent, r.chain));
+        setLabel(n, D("paid", event.agent, r.chain));
         setMetaWithLink(n, `$${r.amount_usd} →`, {
           text: `tx: ${(r.tx_hash || "").slice(0, 8)}...${(r.tx_hash || "").slice(-4)}`,
           href: r.explorer_url,
@@ -306,25 +302,82 @@
     } else if (t === "payment.failed") {
       const n = agentNodes["pay:" + event.agent];
       if (n) {
-        setLabel(n, T("payFailed", event.agent, event.chain));
+        setLabel(n, D("payFailed", event.agent, event.chain));
         setMeta(n, String(event.error || "").slice(0, 120));
         setStatus(n, "error");
         setIcon(n, "error");
         setTs(n, event.ts);
       }
+    } else if (t === "preflight.ok") {
+      makeNode({
+        category: "nearai", icon: "shield",
+        label: D("preflightOk"),
+        meta: "",
+        status: "success",
+        ts: event.ts,
+      });
+    } else if (t === "flow.needs_replan") {
+      // 詳細ラベルを reason に応じて構築
+      let detail;
+      if (event.reason === "quote_failed") {
+        detail = D("replanQuoteFailed", event.failed_agents || []);
+      } else if (event.reason === "partial_acceptance") {
+        detail = D("replanPartialAccept", event.missing_agents || []);
+      } else if (event.reason === "optimizer_error") {
+        detail = D("replanOptimizerError");
+      } else if (event.reason === "settlement_partial") {
+        detail = D("replanSettlementPartial", event.failed_agents || []);
+      } else if (event.reason === "insufficient_balance_near") {
+        detail = D("replanInsufficientNear");
+      } else if (event.reason === "insufficient_balance_xrpl") {
+        detail = D("replanInsufficientXrpl");
+      } else if (event.reason === "preflight_error") {
+        detail = D("replanPreflightError");
+      } else {
+        detail = { primary: event.message || "", secondary: event.message_en || null };
+      }
+      // タイトル + 理由 を2つのノードで
+      makeNode({
+        category: "done", icon: "stop",
+        label: D("replanTitle"),
+        meta: "",
+        status: "replan",
+        ts: event.ts,
+        kind: "replan",
+      });
+      makeNode({
+        category: "done", icon: "error",
+        label: detail,
+        meta: event.message || "",
+        status: "replan",
+        ts: event.ts,
+      });
+      runBtn.disabled = false;
     } else if (t === "flow.done") {
       makeNode({
-        category: "done",
-        icon: "finish",
-        label: T("flowDone", event.total_paid_usd),
+        category: "done", icon: "finish",
+        label: D("flowDone", event.total_paid_usd),
         meta: T("flowDoneMeta", (event.receipts || []).length),
         status: "done",
         ts: event.ts,
-        big: true,
+        kind: "done",
       });
       runBtn.disabled = false;
     }
   }
+
+  // i18n 切替時にラン中ボタンの表示を再評価 (DONEなど)
+  document.addEventListener("i18n:changed", () => {
+    document.querySelectorAll(".node .pill").forEach((p) => {
+      const node = p.closest(".node");
+      if (!node) return;
+      const cls = [...node.classList].find((c) => c.startsWith("status-"));
+      if (cls) p.textContent = pillText(cls.slice("status-".length));
+    });
+    document.querySelectorAll(".receipt .pill").forEach((p) => {
+      p.textContent = window.t ? window.t("confirmed") : "CONFIRMED";
+    });
+  });
 
   runBtn.onclick = async () => {
     const request = reqEl.value.trim();
@@ -337,6 +390,8 @@
         body: JSON.stringify({
           request,
           budget_usd: parseFloat(budgetEl.value || "500"),
+          start_date: startDateEl?.value || null,
+          end_date: endDateEl?.value || null,
         }),
       });
     } catch (e) {

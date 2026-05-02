@@ -42,8 +42,9 @@
 
   <div class="topright">
     <div class="lang-switch" role="group" aria-label="Language">
-      <button data-lang="ja" class="lang-btn active">日本語</button>
+      <button data-lang="ja" class="lang-btn">日本語</button>
       <button data-lang="en" class="lang-btn">English</button>
+      <button data-lang="both" class="lang-btn active">日 / EN</button>
     </div>
     <div class="status-pill">
       <span class="dot"></span>
@@ -64,7 +65,18 @@
         <span class="step-num">1</span>
         <h2 data-i18n="step1Title">Natural-language request</h2>
       </div>
-      <textarea id="request" rows="6" data-i18n-ph="requestPlaceholder">来週バンコクに行きたい、予算500ドル</textarea>
+      <textarea id="request" rows="5" data-i18n-ph="requestPlaceholder">来週バンコクに行きたい、予算500ドル</textarea>
+
+      <div class="dates">
+        <label class="field">
+          <span data-i18n="startDateLabel">Start date</span>
+          <input id="startDate" type="date" />
+        </label>
+        <label class="field">
+          <span data-i18n="endDateLabel">End date</span>
+          <input id="endDate" type="date" />
+        </label>
+      </div>
 
       <label class="field">
         <span data-i18n="budgetLabel">Budget (USD)</span>

@@ -11,6 +11,23 @@ from py_near.account import Account
 USD_TO_NEAR = 0.01  # デモ用固定レート (testnet faucet 残高 10 NEAR で複数回流せるよう小さく)
 
 
+def usd_to_yocto(amount_usd: float) -> int:
+    return int(amount_usd * USD_TO_NEAR * 1e24)
+
+
+async def get_balance_yocto() -> int:
+    """orchestrator アカウントの残高 (yocto NEAR) を返す。"""
+    sender = os.getenv("NEAR_ORCHESTRATOR_ACCOUNT")
+    private_key = os.getenv("NEAR_ORCHESTRATOR_PRIVATE_KEY")
+    rpc_url = os.getenv("NEAR_NODE_URL", "https://rpc.testnet.near.org")
+    if not sender or not private_key:
+        return 0
+    account = Account(sender, private_key, rpc_addr=rpc_url)
+    await account.startup()
+    bal = await account.get_balance()
+    return int(bal)
+
+
 async def transfer_usd(receiver_account_id: str, amount_usd: float) -> dict:
     """orchestrator -> receiver に NEAR で送金し、TX hash を返す。"""
     sender = os.getenv("NEAR_ORCHESTRATOR_ACCOUNT")

@@ -488,6 +488,76 @@ textarea:focus, input:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px v
 }
 .node.done .label { font-size: 15px; font-weight: 700; color: #fff; }
 
+/* ===================== Bilingual ===================== */
+/* data-i18n の中身を上下2行 (primary + secondary) で出すスタイル */
+[data-i18n] { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+[data-i18n] .i18n-primary { display: block; }
+[data-i18n] .i18n-secondary {
+  display: block;
+  font-size: 0.78em;
+  color: var(--muted);
+  font-weight: 400;
+  margin-top: 1px;
+}
+/* 一部の場所では中央寄せ */
+.flow-empty .i18n-primary, .flow-empty .i18n-secondary { text-align: center; }
+.status-pill [data-i18n] { align-items: flex-start; }
+
+/* ボタンや小さい場所では小さい英語をさらに小さく */
+.btn-primary [data-i18n] { align-items: center; }
+.btn-primary [data-i18n] .i18n-secondary { font-size: 0.7em; }
+.lang-btn [data-i18n] { align-items: center; }
+.ghost-btn [data-i18n] { align-items: center; }
+.ghost-btn [data-i18n] .i18n-secondary { font-size: 0.78em; }
+.toggle [data-i18n] { align-items: flex-start; }
+.toggle [data-i18n] .i18n-secondary { font-size: 0.78em; }
+
+/* テキストエリアの placeholder は改行を保つ */
+textarea { white-space: pre-wrap; }
+textarea::placeholder { white-space: pre-line; opacity: .55; }
+
+/* dates row */
+.dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+input[type="date"] {
+  width: 100%;
+  background: var(--bg-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  color-scheme: dark;
+}
+input[type="date"]:focus { border-color: var(--cyan); box-shadow: 0 0 0 3px var(--cyan-soft); }
+
+/* ===================== Live Flow: bilingual node label ===================== */
+.node .label {
+  display: flex;
+  flex-direction: column;
+  white-space: normal;
+  line-height: 1.25;
+  min-width: 0;
+}
+.node .label .lbl-primary { font-weight: 500; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .label .lbl-secondary { color: var(--muted); font-size: 11px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+
+/* needs_replan 警告ノード */
+.node.replan {
+  background: linear-gradient(90deg, #f8717118 0%, transparent 80%);
+  border: 1px solid #f8717155;
+  box-shadow: 0 0 28px #f8717125;
+  padding: 18px 14px;
+}
+.node.replan .label .lbl-primary { font-size: 15px; font-weight: 700; color: #fff; }
+.node.status-replan .pill {
+  color: var(--red);
+  border-color: var(--red);
+  background: rgba(248,113,113,0.15);
+  animation: pulseSoft 1.4s ease-in-out infinite;
+}
+
 /* responsive */
 @media (max-width: 1100px) {
   .topbar { grid-template-columns: 1fr; gap: 14px; }

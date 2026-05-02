@@ -1,5 +1,8 @@
-// 軽量 i18n: data-i18n / data-i18n-ph / data-i18n-rich を切り替える
-// 動的テキストは window.t(key, params) で参照する
+// 軽量 i18n: モード ja / en / both (併記)
+// 表示モードは LocalStorage "atc.lang" に保存。デフォルトは "both".
+// - 静的テキストは applyStaticStrings() で書き換え
+// - 動的テキスト (フローイベント) は window.t(key, ...params) または
+//   window.tDual(key, ...params) で取得
 (() => {
   const STRINGS = {
     ja: {
@@ -10,6 +13,8 @@
       step1Title: "自然言語リクエスト",
       requestPlaceholder: "例: 来週バンコクに行きたい、予算500ドル",
       budgetLabel: "予算 (USD)",
+      startDateLabel: "開始日",
+      endDateLabel: "終了日",
       orchestrate: "Orchestrate",
       step2Title: "オンチェーン受領",
       viewAll: "すべて表示",
@@ -38,11 +43,21 @@
       payFailed: (a, c) => `❌ ${a} 支払い失敗 (${c})`,
       flowDone: (total) => `フロー完了 — 合計 $${total} 支払い済み`,
       flowDoneMeta: (n) => `${n} 件のオンチェーン取引`,
+      replanTitle: "🛑 再提案が必要",
+      replanQuoteFailed: (failed) => `見積失敗: ${failed.join(", ")} → 部分支払いを避けて中止`,
+      replanPartialAccept: (missing) => `AI が ${missing.join(", ")} を不採択 → 部分支払いを避けて中止`,
+      replanOptimizerError: "最適化エラー → 中止",
+      replanSettlementPartial: (failed) => `決済中に失敗 (${failed.join(", ")}) → 再提案要`,
+      replanInsufficientNear: "NEAR 残高不足 → 1件も決済せず中止",
+      replanInsufficientXrpl: "XRP 残高不足 → 1件も決済せず中止",
+      replanPreflightError: "残高確認エラー → 中止",
+      preflightOk: "✅ 残高チェック OK — 決済を一括発火",
       stStatusActive: "ACTIVE",
       stStatusSuccess: "SUCCESS",
       stStatusError: "ERROR",
       stStatusDone: "DONE",
-      confirmed: "CONFIRMED",
+      stStatusReplan: "REPLAN",
+      confirmed: "完了",
     },
     en: {
       appTitle: "Agentic Travel Concierge",
@@ -52,6 +67,8 @@
       step1Title: "Natural-language request",
       requestPlaceholder: "e.g. Bangkok next week, budget 500 USD",
       budgetLabel: "Budget (USD)",
+      startDateLabel: "Start date",
+      endDateLabel: "End date",
       orchestrate: "Orchestrate",
       step2Title: "On-chain Receipts",
       viewAll: "View all",
@@ -80,63 +97,123 @@
       payFailed: (a, c) => `❌ ${a} payment failed (${c})`,
       flowDone: (total) => `Flow complete — total paid $${total}`,
       flowDoneMeta: (n) => `${n} on-chain transactions`,
+      replanTitle: "🛑 Replan required",
+      replanQuoteFailed: (failed) => `Quote failed: ${failed.join(", ")} → aborted to avoid partial payment`,
+      replanPartialAccept: (missing) => `AI did not accept ${missing.join(", ")} → aborted to avoid partial payment`,
+      replanOptimizerError: "Optimization error → aborted",
+      replanSettlementPartial: (failed) => `Settlement failed (${failed.join(", ")}) → replan required`,
+      replanInsufficientNear: "Insufficient NEAR balance → aborted without any payment",
+      replanInsufficientXrpl: "Insufficient XRP balance → aborted without any payment",
+      replanPreflightError: "Balance precheck failed → aborted",
+      preflightOk: "✅ Balance check OK — settling all payments",
       stStatusActive: "ACTIVE",
       stStatusSuccess: "SUCCESS",
       stStatusError: "ERROR",
       stStatusDone: "DONE",
+      stStatusReplan: "REPLAN",
       confirmed: "CONFIRMED",
     },
   };
 
-  const STORAGE_KEY = "atc.lang";
-  const initial = localStorage.getItem(STORAGE_KEY) || (navigator.language?.startsWith("ja") ? "ja" : "en");
-  let current = STRINGS[initial] ? initial : "en";
+  const STORAGE_KEY = "atc.lang"; // "ja" | "en" | "both"
+  const stored = localStorage.getItem(STORAGE_KEY);
+  let mode = stored && ["ja", "en", "both"].includes(stored) ? stored : "both";
 
-  function t(key, ...params) {
-    const v = STRINGS[current][key];
-    if (typeof v === "function") return v(...params);
+  // primary / secondary 言語を返す (both のときは ja / en)
+  function langs() {
+    if (mode === "ja") return { primary: "ja", secondary: null };
+    if (mode === "en") return { primary: "en", secondary: null };
+    return { primary: "ja", secondary: "en" };
+  }
+
+  function pick(lang, key, params) {
+    const v = STRINGS[lang][key];
+    if (typeof v === "function") return v(...(params || []));
     return v ?? key;
   }
 
+  // 単言語版: モードに従い primary を返す
+  function t(key, ...params) {
+    return pick(langs().primary, key, params);
+  }
+
+  // 併記版: { primary, secondary } を返す。both 以外は secondary が null
+  function tDual(key, ...params) {
+    const { primary, secondary } = langs();
+    return {
+      primary: pick(primary, key, params),
+      secondary: secondary ? pick(secondary, key, params) : null,
+    };
+  }
+
   function applyStaticStrings() {
-    document.documentElement.lang = current;
+    document.documentElement.lang = langs().primary;
     document.querySelectorAll("[data-i18n]").forEach((el) => {
-      el.textContent = t(el.getAttribute("data-i18n"));
+      const k = el.getAttribute("data-i18n");
+      const dual = tDual(k);
+      el.textContent = "";
+      const main = document.createElement("span");
+      main.className = "i18n-primary";
+      main.textContent = dual.primary;
+      el.appendChild(main);
+      if (dual.secondary) {
+        const sub = document.createElement("span");
+        sub.className = "i18n-secondary";
+        sub.textContent = dual.secondary;
+        el.appendChild(sub);
+      }
     });
     document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
-      el.setAttribute("placeholder", t(el.getAttribute("data-i18n-ph")));
+      const k = el.getAttribute("data-i18n-ph");
+      const dual = tDual(k);
+      // placeholder は1行表示しかできないので、both のときは 全/英 を改行で繋ぐ
+      el.setAttribute("placeholder", dual.secondary ? `${dual.primary}\n${dual.secondary}` : dual.primary);
     });
-    // flow-empty は <strong> を含むので、安全に組み立てる
+    // flow-empty (strong を含む合成テキスト)
     const flowEmpty = document.getElementById("flowEmpty");
     if (flowEmpty) {
       flowEmpty.textContent = "";
-      flowEmpty.appendChild(document.createTextNode(t("flowEmptyPrefix")));
-      const strong = document.createElement("strong");
-      strong.textContent = t("flowEmptyKey");
-      flowEmpty.appendChild(strong);
-      flowEmpty.appendChild(document.createTextNode(t("flowEmptySuffix")));
+      const buildLine = (lang) => {
+        const wrap = document.createElement("div");
+        wrap.appendChild(document.createTextNode(pick(lang, "flowEmptyPrefix")));
+        const strong = document.createElement("strong");
+        strong.textContent = pick(lang, "flowEmptyKey");
+        wrap.appendChild(strong);
+        wrap.appendChild(document.createTextNode(pick(lang, "flowEmptySuffix")));
+        return wrap;
+      };
+      const { primary, secondary } = langs();
+      const p = buildLine(primary);
+      p.classList.add("i18n-primary");
+      flowEmpty.appendChild(p);
+      if (secondary) {
+        const s = buildLine(secondary);
+        s.classList.add("i18n-secondary");
+        flowEmpty.appendChild(s);
+      }
     }
     document.querySelectorAll(".lang-btn").forEach((b) => {
-      b.classList.toggle("active", b.getAttribute("data-lang") === current);
+      b.classList.toggle("active", b.getAttribute("data-lang") === mode);
     });
-    document.dispatchEvent(new CustomEvent("i18n:changed", { detail: { lang: current } }));
+    document.dispatchEvent(new CustomEvent("i18n:changed", { detail: { mode } }));
   }
 
-  function setLang(lang) {
-    if (!STRINGS[lang]) return;
-    current = lang;
-    localStorage.setItem(STORAGE_KEY, lang);
+  function setMode(next) {
+    if (!["ja", "en", "both"].includes(next)) return;
+    mode = next;
+    localStorage.setItem(STORAGE_KEY, mode);
     applyStaticStrings();
   }
 
   document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".lang-btn").forEach((b) => {
-      b.addEventListener("click", () => setLang(b.getAttribute("data-lang")));
+      b.addEventListener("click", () => setMode(b.getAttribute("data-lang")));
     });
     applyStaticStrings();
   });
 
   window.t = t;
-  window.getLang = () => current;
-  window.setLang = setLang;
+  window.tDual = tDual;
+  window.getLang = () => mode;
+  window.setLang = setMode;
 })();
