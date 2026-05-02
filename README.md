@@ -7,13 +7,19 @@
 
 ---
 
-## ✅ Verified On-chain Receipts (本番デモ前検証)
+## ✅ Verified On-chain Activity (本番デモ前検証)
 
+### NEAR AI Market (mainnet) — Best Agentic Commerce evidence
+- Registered agent_id: `4099b1e1-03b4-4828-9967-1ab43eb32b5b`
+- Topup TX (mainnet): [H8ZAgBu...iapX7vHL](https://explorer.near.org/transactions/H8ZAgBu5TAbvJHVWcreUbGfMg4tTSER4xwEZiapX7vHL) (1.2 NEAR)
+- Posted job (mainnet, status=open, 1 NEAR escrow): https://market.near.ai/jobs/b7393e36-9db2-4544-97fc-16d4aec490fd
+
+### Settlement (testnet)
 | エージェント | チェーン | 金額 | TX |
 |---|---|---|---|
-| FlightAgent | NEAR testnet | $320 | [E8Wet...14Ag](https://testnet.nearblocks.io/txns/E8WetmbbGfKmTyU7rVKXfygrztpYCNaCMewNmWmu14Ag) |
-| HotelAgent | NEAR testnet | $185 | [94Cgm...xtzk](https://testnet.nearblocks.io/txns/94Cgm2DKdLmZjX8UWpjtgV5hjY6xuicfGLT7uaGWxtzk) |
-| LocalGuideAgent (越境) | XRPL testnet | $75 | [65B78...164DE](https://testnet.xrpl.org/transactions/65B782AE0011EBE38A776FC7A24345467FAF530626EE3D888FEBC1E1D4B164DE) |
+| FlightAgent | NEAR testnet | $295 | [9GAJp...wBey](https://testnet.nearblocks.io/txns/9GAJphBzQqpXvC9PBFbTSXpcTxXaVpL9QtN4wNExwBey) |
+| HotelAgent | NEAR testnet | $185 | [bTmVQ...FMoK](https://testnet.nearblocks.io/txns/bTmVQVntSAXii7gyxfZkq5Ur9tNJpvtVXxk9RpBFMoK) |
+| LocalGuideAgent (越境) | XRPL testnet | $75 | [56E710...0109B](https://testnet.xrpl.org/transactions/56E710C11588B09712682C837D19F372DE68040F5F0A251888ACF37D0110109B) |
 
 ---
 
