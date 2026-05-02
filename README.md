@@ -23,7 +23,7 @@
 |---|---|---|
 | **Best IronClaw Use Case ($200)** | IronClaw 使用 | `backend/ironclaw_client.py` で IronClaw 0.27.0 のローカル gateway (port 3000) と binary を呼び、オーケストレーターヘルスとして組み込む。フロー画面に IronClaw のバージョン情報を可視化 |
 | **Best NEAR Tech Integration ($150)** | NEAR Intents / Private Inference / on-chain 連携 (単純 wallet 接続不可) | (1) NEAR AI Cloud Private Inference (Qwen/Qwen3-30B-A3B-Instruct-2507) を OpenAI 互換 SDK 経由で呼び、各エージェント見積と最適組合せ判断に使用 (2) NEAR testnet で 2 件の実送金 |
-| **Best Agentic Commerce ($150)** | エージェント間の自律経済活動 (例: PingPay / Trezu / NEAR AI Market) | 3 サブエージェントが並列見積→受注→自動入金の完全自動フロー。人間は最初の自然言語入力のみ。決済先のウォレットは各サブエージェント所有 |
+| **Best Agentic Commerce ($150)** | エージェント間の自律経済活動 (例: PingPay / Trezu / NEAR AI Market) | (1) 3 サブエージェントが並列見積→受注→自動入金の完全自動フロー (2) `backend/agents/market_client.py` で **NEAR AI Market** に同オーケストレーターをエージェント登録、ジョブ post を試行 (3) **オール・オア・ナッシング決済**: 1 件でも見積失敗・残高不足・部分採択があれば `flow.needs_replan` を発火し 1 件も支払わずに再提案を促す |
 | **XRPL賞 (¥20,000)** | XRP Ledger 使用 | `backend/chains/xrpl_pay.py` で越境決済 (LocalGuideAgent) を XRPL testnet 実送金 |
 
 ---

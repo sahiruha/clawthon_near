@@ -226,6 +226,48 @@
         status: event.available ? "success" : "error",
         ts: event.ts,
       });
+    } else if (t === "market.posting") {
+      agentNodes._market = makeNode({
+        category: "nearai", icon: "cloud",
+        label: D("marketPosting"), meta: "",
+        status: "active", ts: event.ts,
+      });
+    } else if (t === "market.registered") {
+      const n = agentNodes._market;
+      const short = (event.agent_id || "").slice(0, 8);
+      if (n) {
+        setLabel(n, D("marketRegistered", short));
+        setMeta(n, `near_account: ${(event.near_account_id || "").slice(0, 16)}…`);
+        setStatus(n, "success");
+        setIcon(n, "star");
+        setTs(n, event.ts);
+      }
+    } else if (t === "market.skipped") {
+      makeNode({
+        category: "nearai", icon: "wallet",
+        label: D("marketSkipped"),
+        meta: `mainnet topup → ${(event.deposit_account || "").slice(0, 24)}…`,
+        status: "error",
+        ts: event.ts,
+      });
+    } else if (t === "market.posted") {
+      const n = agentNodes._market;
+      if (n) {
+        setLabel(n, D("marketPosted", event.job_id));
+        setMetaWithLink(n, "", { text: event.market_url || event.job_id, href: event.market_url || "#" });
+        setStatus(n, "success");
+        setIcon(n, "star");
+        setTs(n, event.ts);
+      }
+    } else if (t === "market.error") {
+      const n = agentNodes._market;
+      if (n) {
+        setLabel(n, D("marketError", String(event.error || "").slice(0, 60)));
+        setMeta(n, String(event.error || "").slice(0, 200));
+        setStatus(n, "error");
+        setIcon(n, "error");
+        setTs(n, event.ts);
+      }
     } else if (t === "agent.thinking") {
       const cat = chainCategory(event.chain);
       agentNodes[event.agent] = makeNode({

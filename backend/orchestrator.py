@@ -17,6 +17,7 @@ from .agents.base import Quote, optimize_combination
 from .agents.flight import FlightAgent
 from .agents.hotel import HotelAgent
 from .agents.local_guide import LocalGuideAgent
+from .agents import market_client
 from .chains import near_pay, xrpl_pay
 from .ironclaw_client import IronclawClient
 from .ws_manager import WSManager
@@ -40,6 +41,64 @@ async def run_flow(user_request: str, budget_usd: float, ws: WSManager) -> None:
     available = await ironclaw.health()
     announce = await ironclaw.announce_task(user_request)
     await _emit(ws, "ironclaw.ready", {"available": available, "announce": announce})
+
+    # 1.5 NEAR AI Market 連携 (Best Agentic Commerce Use Case 賞用)
+    #     market.near.ai は mainnet 運用. このオーケストレーターを Market に
+    #     エージェントとして登録し、ジョブ post も試みる (mainnet 残高があれば成功)
+    await _emit(ws, "market.posting", {})
+    try:
+        reg = await market_client.register_if_needed()
+        api_key = reg.get("api_key")
+        agent_id = reg.get("agent_id") or ""
+        market_account = reg.get("near_account_id") or ""
+        if not api_key:
+            raise RuntimeError("could not obtain market API key")
+
+        await _emit(
+            ws,
+            "market.registered",
+            {
+                "agent_id": agent_id,
+                "near_account_id": market_account,
+                "registered_now": reg.get("registered", False),
+                "message": f"NEAR AI Market にエージェント登録済 (agent {agent_id[:8]}…)",
+                "message_en": f"Registered on NEAR AI Market (agent {agent_id[:8]}…)",
+            },
+        )
+
+        # 残高確認 → ジョブ post (失敗してもフロー続行)
+        balance = await market_client.get_balance(api_key)
+        bal_near = float(balance.get("balance", "0") or 0)
+
+        if bal_near < 1:
+            await _emit(
+                ws,
+                "market.skipped",
+                {
+                    "reason": "insufficient_balance_mainnet",
+                    "balance_near": balance.get("balance"),
+                    "deposit_account": balance.get("deposit_account"),
+                    "message": "Market wallet (mainnet) 残高 0 NEAR — ジョブ作成スキップ. Topupで本番posting可能",
+                    "message_en": "Market wallet (mainnet) balance is 0 NEAR — job post skipped. Topup enables real job posting.",
+                },
+            )
+        else:
+            job = await market_client.post_job(
+                api_key,
+                title="Travel orchestration request from autonomous AI concierge",
+                description=user_request,
+                budget_near=max(1, int(budget_usd / 100)),
+            )
+            if "error" in job:
+                await _emit(ws, "market.error", {"error": job["error"]})
+            else:
+                await _emit(ws, "market.posted", {
+                    "job_id": job["job_id"],
+                    "market_url": job.get("market_url"),
+                    "status": job.get("status"),
+                })
+    except Exception as e:
+        await _emit(ws, "market.error", {"error": str(e)})
 
     # 2. 3 サブエージェント並列見積
     agents = [FlightAgent(), HotelAgent(), LocalGuideAgent()]
