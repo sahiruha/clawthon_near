@@ -1,0 +1,118 @@
+<!doctype html>
+<!--
+  Mock player: バックエンド (uvicorn / NEAR / XRPL) を起動しなくても、
+  WebSocket と同じイベント列を再生して UI を試せる。
+  デザイナーがこのファイルだけ開けば全フローが動く。
+
+  使い方:
+    open frontend/mock.html (ブラウザで直接開いてOK)
+    または `python3 -m http.server 5500 -d frontend` で起動して
+           http://localhost:5500/mock.html
+-->
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>Mock player — Agentic Travel Concierge</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header>
+  <h1>🛰️ Agentic Travel Concierge <small style="opacity:.6">[MOCK]</small></h1>
+  <div class="badges">
+    <span class="badge ironclaw">IronClaw</span>
+    <span class="badge near">NEAR AI Cloud</span>
+    <span class="badge near-chain">NEAR testnet</span>
+    <span class="badge xrpl">XRPL testnet</span>
+  </div>
+</header>
+
+<main>
+  <section class="left">
+    <div class="prompt">
+      <textarea id="request" rows="3">来週バンコクに行きたい、予算500ドル</textarea>
+      <div class="row">
+        <label>Budget USD <input id="budget" type="number" value="500" /></label>
+        <button id="run">▶ Replay Mock Flow</button>
+      </div>
+    </div>
+    <div class="receipts">
+      <h2>🧾 On-chain Receipts</h2>
+      <div id="receipts"></div>
+    </div>
+  </section>
+  <section class="right">
+    <h2>Live Flow</h2>
+    <div id="flow" class="flow"></div>
+  </section>
+</main>
+
+<script>
+// ====== モック WebSocket ======
+// app.js が new WebSocket(...) するのを乗っ取る
+const MOCK_EVENTS = [
+  {delay:0,    e:{type:"flow.start", request:"来週バンコクに行きたい、予算500ドル", budget_usd:500}},
+  {delay:200,  e:{type:"ironclaw.checking"}},
+  {delay:600,  e:{type:"ironclaw.ready", available:true, announce:{gateway_running:true, binary_version:"ironclaw 0.27.0", available:true, delivery:"gateway", status:405}}},
+  {delay:300,  e:{type:"agent.thinking", agent:"FlightAgent", chain:"near"}},
+  {delay:50,   e:{type:"agent.thinking", agent:"HotelAgent", chain:"near"}},
+  {delay:50,   e:{type:"agent.thinking", agent:"LocalGuideAgent", chain:"xrpl"}},
+  {delay:1800, e:{type:"agent.quoted", agent:"FlightAgent", quote:{agent:"FlightAgent", description:"Round-trip economy flight Tokyo → Bangkok", amount_usd:320, chain:"near", receiver:"flight-701307.testnet"}}},
+  {delay:400,  e:{type:"agent.quoted", agent:"HotelAgent", quote:{agent:"HotelAgent", description:"3-night mid-range hotel in central Bangkok", amount_usd:185, chain:"near", receiver:"hotel-701307.testnet"}}},
+  {delay:300,  e:{type:"agent.quoted", agent:"LocalGuideAgent", quote:{agent:"LocalGuideAgent", description:"Half-day local guide for temples and street food", amount_usd:75, chain:"xrpl", receiver:"rQ9ejdbK3riQifuQ51pph4zeqdsxx122iD"}}},
+  {delay:400,  e:{type:"optimizer.thinking", model:"Qwen/Qwen3-30B-A3B-Instruct-2507"}},
+  {delay:1500, e:{type:"optimizer.decided", decision:{accepted:["FlightAgent","HotelAgent","LocalGuideAgent"], reasoning:"Within $500 budget? No ($580). However, all are essential for trip; accepted as small overrun is acceptable", total_usd:580}}},
+  {delay:500,  e:{type:"payment.sending", agent:"FlightAgent", chain:"near", amount_usd:320}},
+  {delay:50,   e:{type:"payment.sending", agent:"HotelAgent", chain:"near", amount_usd:185}},
+  {delay:50,   e:{type:"payment.sending", agent:"LocalGuideAgent", chain:"xrpl", amount_usd:75}},
+  {delay:1200, e:{type:"payment.confirmed", agent:"LocalGuideAgent", receipt:{chain:"xrpl", tx_hash:"65B782AE0011EBE38A776FC7A24345467FAF530626EE3D888FEBC1E1D4B164DE", explorer_url:"https://testnet.xrpl.org/transactions/65B782AE0011EBE38A776FC7A24345467FAF530626EE3D888FEBC1E1D4B164DE", amount_usd:75, amount_native:7.5, receiver:"rQ9ejdbK3riQifuQ51pph4zeqdsxx122iD"}}},
+  {delay:600,  e:{type:"payment.confirmed", agent:"HotelAgent", receipt:{chain:"near", tx_hash:"94Cgm2DKdLmZjX8UWpjtgV5hjY6xuicfGLT7uaGWxtzk", explorer_url:"https://testnet.nearblocks.io/txns/94Cgm2DKdLmZjX8UWpjtgV5hjY6xuicfGLT7uaGWxtzk", amount_usd:185, amount_native:1.85, receiver:"hotel-701307.testnet"}}},
+  {delay:400,  e:{type:"payment.confirmed", agent:"FlightAgent", receipt:{chain:"near", tx_hash:"E8WetmbbGfKmTyU7rVKXfygrztpYCNaCMewNmWmu14Ag", explorer_url:"https://testnet.nearblocks.io/txns/E8WetmbbGfKmTyU7rVKXfygrztpYCNaCMewNmWmu14Ag", amount_usd:320, amount_native:3.2, receiver:"flight-701307.testnet"}}},
+  {delay:500,  e:{type:"flow.done", total_paid_usd:580, receipts:[{},{},{}]}},
+];
+
+class FakeSocket {
+  constructor(url) {
+    this.url = url;
+    setTimeout(() => this.onopen && this.onopen(), 10);
+  }
+  send() {}
+  close() { this.onclose && this.onclose(); }
+}
+window.WebSocket = FakeSocket;
+let _fakeSocket = null;
+const _origNewSocket = WebSocket;
+
+// app.js に WebSocket を持たせ、play 時にメッセージを順次配信
+const sockets = [];
+window.WebSocket = function MockSocket(url) {
+  const s = new FakeSocket(url);
+  sockets.push(s);
+  return s;
+};
+
+async function play() {
+  for (const {delay, e} of MOCK_EVENTS) {
+    await new Promise(r => setTimeout(r, delay));
+    const ts = Date.now() / 1000;
+    const ev = {ts, ...e};
+    const data = JSON.stringify(ev);
+    sockets.forEach(s => s.onmessage && s.onmessage({data}));
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  // app.js の runBtn が POST を投げるのを止めて、代わりに play() を起動
+  const btn = document.getElementById("run");
+  btn.onclick = (ev) => {
+    ev.preventDefault();
+    btn.disabled = true;
+    play().then(() => btn.disabled = false);
+  };
+  // 自動再生
+  setTimeout(() => btn.click(), 400);
+});
+</script>
+<script src="app.js"></script>
+</body>
+</html>
