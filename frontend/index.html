@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>Agentic Travel Concierge — Clawathon Tokyo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<header>
+  <h1>🛰️ Agentic Travel Concierge</h1>
+  <div class="badges">
+    <span class="badge ironclaw">IronClaw</span>
+    <span class="badge near">NEAR AI Cloud</span>
+    <span class="badge near-chain">NEAR testnet</span>
+    <span class="badge xrpl">XRPL testnet</span>
+  </div>
+</header>
+
+<main>
+  <section class="left">
+    <div class="prompt">
+      <textarea id="request" rows="3"
+        placeholder="例: 来週バンコクに行きたい、予算500ドル"></textarea>
+      <div class="row">
+        <label>Budget USD <input id="budget" type="number" value="500" /></label>
+        <button id="run">▶ Orchestrate</button>
+      </div>
+    </div>
+
+    <div class="receipts">
+      <h2>🧾 On-chain Receipts</h2>
+      <div id="receipts"></div>
+    </div>
+  </section>
+
+  <section class="right">
+    <h2>Live Flow</h2>
+    <div id="flow" class="flow"></div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
