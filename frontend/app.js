@@ -1,25 +1,28 @@
-// WebSocket でフロー進捗を受け取り、画面に流す
+// Live Flow renderer with i18n + step counter + status pills
 (() => {
   const flow = document.getElementById("flow");
+  const flowEmpty = document.getElementById("flowEmpty");
   const receipts = document.getElementById("receipts");
   const runBtn = document.getElementById("run");
   const reqEl = document.getElementById("request");
   const budgetEl = document.getElementById("budget");
+  const autoscrollEl = document.getElementById("autoscroll");
 
   const wsProto = location.protocol === "https:" ? "wss" : "ws";
   let ws;
   let agentNodes = {};
+  let stepCounter = 0;
 
   function connect() {
     ws = new WebSocket(`${wsProto}://${location.host}/ws`);
     ws.onmessage = (ev) => {
-      const event = JSON.parse(ev.data);
-      handle(event);
+      try { handle(JSON.parse(ev.data)); } catch (_) {}
     };
     ws.onclose = () => setTimeout(connect, 800);
   }
   connect();
 
+  // ---------- helpers ----------
   function el(tag, opts = {}) {
     const e = document.createElement(tag);
     if (opts.cls) e.className = opts.cls;
@@ -29,163 +32,295 @@
     return e;
   }
 
-  function makeNode({ kind, label, meta, classes = [], status = "active" }) {
-    const node = el("div", { cls: ["node", kind, ...classes, status].join(" ") });
-    node.appendChild(el("div", { cls: "dot" }));
-    node.appendChild(el("div", { cls: "label", text: label }));
-    node.appendChild(el("div", { cls: "meta", text: meta || "" }));
+  function fmtTs(ts) {
+    return new Date(ts * 1000).toLocaleTimeString([], { hour12: false });
+  }
+
+  function pad2(n) { return String(n).padStart(2, "0"); }
+
+  // SVG icons (stroke=currentColor)
+  const ICONS = {
+    rocket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13a8 8 0 0 1 8-8h6v6a8 8 0 0 1-8 8H5z"/><path d="M5 19l-2 2"/><circle cx="14" cy="10" r="2"/></svg>',
+    pulse:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9 8 11 4.5-2 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg>',
+    plane:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12l8-3 4-7 2 1-1 7 7 4-1 2-8-2-4 7-2-1 1-7-6-1z"/></svg>',
+    hotel:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2M10 21v-4h4v4"/></svg>',
+    food:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3v8a3 3 0 0 0 6 0V3M7 3v18M17 3c-2 0-3 1-3 4v6h3v8"/></svg>',
+    cloud:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4 4 0 0 1-1-7.9 6 6 0 0 1 11.7 1.4A4 4 0 0 1 17 18z"/></svg>',
+    star:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15 9 22 10 17 15 18 22 12 19 6 22 7 15 2 10 9 9"/></svg>',
+    wallet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/></svg>',
+    check:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
+    error:  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 7v6M12 17h.01"/></svg>',
+    finish: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>',
+  };
+
+  function setIcon(node, name) {
+    const ic = node.querySelector(".icon");
+    if (!ic) return;
+    ic.textContent = "";
+    const wrap = document.createElement("span");
+    wrap.style.lineHeight = "0";
+    // Static SVG defined above (no user input). Safe to inline.
+    wrap.innerHTML = ICONS[name] || ICONS.pulse; // eslint-disable-line
+    ic.appendChild(wrap);
+  }
+
+  function makeNode({ category, icon, label, meta, status = "active", ts, big = false }) {
+    if (flowEmpty) flowEmpty.style.display = "none";
+    stepCounter += 1;
+    const node = document.createElement("li");
+    node.className = `node cat-${category} status-${status}` + (big ? " done" : "");
+
+    const step = el("div", { cls: "step", text: pad2(stepCounter) });
+    const ic = el("div", { cls: "icon" });
+    const labelEl = el("div", { cls: "label", text: label });
+    const metaEl = el("div", { cls: "meta", text: meta || "" });
+    const right = el("div", { cls: "right-meta" });
+    const pill = el("div", { cls: "pill", text: pillText(status) });
+    const tsEl = el("div", { cls: "ts", text: ts ? fmtTs(ts) : "" });
+    right.appendChild(pill);
+    right.appendChild(tsEl);
+
+    node.appendChild(step);
+    node.appendChild(ic);
+    node.appendChild(labelEl);
+    node.appendChild(metaEl);
+    node.appendChild(right);
+
     flow.appendChild(node);
-    flow.scrollTop = flow.scrollHeight;
+    setIcon(node, icon);
+    autoscroll();
     return node;
+  }
+
+  function pillText(status) {
+    if (status === "active") return window.t ? window.t("stStatusActive") : "ACTIVE";
+    if (status === "success") return window.t ? window.t("stStatusSuccess") : "SUCCESS";
+    if (status === "error") return window.t ? window.t("stStatusError") : "ERROR";
+    if (status === "done") return window.t ? window.t("stStatusDone") : "DONE";
+    return status.toUpperCase();
   }
 
   function setStatus(node, status) {
     if (!node) return;
-    node.classList.remove("active", "success", "error");
-    node.classList.add(status);
+    node.classList.remove("status-active", "status-success", "status-error", "status-done");
+    node.classList.add(`status-${status}`);
+    const pill = node.querySelector(".pill");
+    if (pill) pill.textContent = pillText(status);
   }
 
-  function setMetaText(node, text) {
-    const meta = node.querySelector(".meta");
-    if (meta) meta.textContent = text;
-  }
-
-  function setLabelText(node, text) {
-    const label = node.querySelector(".label");
-    if (label) label.textContent = text;
-  }
-
+  function setLabel(node, text)  { const x = node.querySelector(".label"); if (x) x.textContent = text; }
+  function setMeta(node, text)   { const x = node.querySelector(".meta");  if (x) x.textContent = text; }
   function setMetaWithLink(node, text, link) {
-    const meta = node.querySelector(".meta");
-    if (!meta) return;
-    meta.textContent = "";
-    meta.appendChild(document.createTextNode(text + " "));
-    meta.appendChild(el("a", { text: link.text, href: link.href, target: "_blank" }));
+    const x = node.querySelector(".meta"); if (!x) return;
+    x.textContent = "";
+    if (text) x.appendChild(document.createTextNode(text + " "));
+    x.appendChild(el("a", { text: link.text, href: link.href, target: "_blank" }));
+  }
+  function setTs(node, ts) { const x = node.querySelector(".ts"); if (x && ts) x.textContent = fmtTs(ts); }
+
+  function autoscroll() {
+    if (autoscrollEl?.checked) {
+      const right = document.querySelector(".right.card");
+      if (right) right.scrollTop = right.scrollHeight;
+    }
   }
 
-  function fmtTs(ts) {
-    return new Date(ts * 1000).toLocaleTimeString();
+  function chainCategory(chain) {
+    return chain === "xrpl" ? "xrpl" : "near";
+  }
+  function agentIcon(agent, chain) {
+    if (agent === "FlightAgent") return "plane";
+    if (agent === "HotelAgent") return "hotel";
+    if (agent === "LocalGuideAgent") return "food";
+    return chain === "xrpl" ? "wallet" : "shield";
   }
 
   function appendReceipt(agent, r) {
+    // first receipt: clear empty placeholder
+    const empty = receipts.querySelector(".receipts-empty");
+    if (empty) empty.remove();
+
     const card = el("div", { cls: `receipt ${r.chain}` });
-    card.appendChild(el("div", { cls: "agent", text: `${agent} — $${r.amount_usd}` }));
-    const native = r.amount_native != null ? r.amount_native.toFixed(4) : "?";
+    const ic = el("div", { cls: "icon", text: r.chain === "near" ? "Ⓝ" : "✕" });
+    const body = el("div", { cls: "body" });
+    body.appendChild(el("div", { cls: "agent", text: agent }));
+    const native = r.amount_native != null ? r.amount_native.toFixed(2) : "?";
     const sym = r.chain === "near" ? "NEAR" : "XRP";
-    card.appendChild(el("div", { text: `${r.chain.toUpperCase()} • ${native} ${sym}` }));
-    card.appendChild(el("a", {
+    body.appendChild(el("div", { cls: "meta", text: `${native} ${sym}` }));
+    body.appendChild(el("a", {
       cls: "tx",
-      text: r.tx_hash || "",
+      text: `tx: ${(r.tx_hash || "").slice(0, 8)}...${(r.tx_hash || "").slice(-4)}`,
       href: r.explorer_url,
       target: "_blank",
     }));
+
+    const right = el("div", { cls: "right-col" });
+    right.appendChild(el("div", { cls: "amount", text: `$${r.amount_usd}` }));
+    right.appendChild(el("span", { cls: "pill", text: window.t ? window.t("confirmed") : "CONFIRMED" }));
+
+    card.appendChild(ic);
+    card.appendChild(body);
+    card.appendChild(right);
     receipts.appendChild(card);
   }
 
+  // ---------- event handler ----------
   function handle(event) {
+    const T = window.t || ((k) => k);
     const t = event.type;
+
     if (t === "flow.start") {
       flow.textContent = "";
       receipts.textContent = "";
+      // restore empty placeholder for receipts
+      const empty = el("div", { cls: "receipts-empty", text: T("receiptsEmpty") });
+      receipts.appendChild(empty);
+
+      if (flowEmpty) flowEmpty.style.display = "none";
       agentNodes = {};
-      makeNode({
-        kind: "ironclaw",
-        label: `🛰️ Flow started — "${event.request}"`,
-        meta: `budget $${event.budget_usd} • ${fmtTs(event.ts)}`,
+      stepCounter = 0;
+      const n = makeNode({
+        category: "ironclaw",
+        icon: "rocket",
+        label: T("flowStarted", event.request),
+        meta: T("budgetMeta", event.budget_usd),
         status: "success",
+        ts: event.ts,
       });
+      // step:01 のフロー開始は紫
     } else if (t === "ironclaw.checking") {
-      makeNode({
-        kind: "ironclaw",
-        label: "IronClaw orchestrator: health check...",
-        meta: fmtTs(event.ts),
+      const n = makeNode({
+        category: "ironclaw",
+        icon: "pulse",
+        label: T("icCheck"),
+        meta: "",
+        status: "active",
+        ts: event.ts,
       });
+      agentNodes._ironclawCheck = n;
     } else if (t === "ironclaw.ready") {
+      const ann = event.announce || {};
+      const ver = ann.binary_version || "";
       makeNode({
-        kind: "ironclaw",
-        label: event.available
-          ? "✅ IronClaw orchestrator: ready (port 8081)"
-          : "⚠️ IronClaw orchestrator: announced (offline fallback)",
-        meta: JSON.stringify(event.announce).slice(0, 60),
+        category: "ironclaw",
+        icon: "shield",
+        label: event.available ? T("icReady") : T("icOffline"),
+        meta: ver ? T("icBinary", ver) : "",
         status: event.available ? "success" : "error",
+        ts: event.ts,
       });
     } else if (t === "agent.thinking") {
+      const cat = chainCategory(event.chain);
       const n = makeNode({
-        kind: "agent",
-        label: `🤖 ${event.agent} thinking...`,
-        meta: `chain: ${event.chain}`,
+        category: cat,
+        icon: agentIcon(event.agent, event.chain),
+        label: T("agentThinking", event.agent),
+        meta: T("agentChain", event.chain),
+        status: "active",
+        ts: event.ts,
       });
       agentNodes[event.agent] = n;
     } else if (t === "agent.quoted") {
       const n = agentNodes[event.agent];
       const q = event.quote;
       if (n) {
-        setLabelText(n, `💬 ${event.agent}: ${q.description}`);
-        setMetaText(n, `$${q.amount_usd} → ${q.chain}:${(q.receiver || "?").slice(0, 24)}`);
+        setLabel(n, T("agentQuoted", event.agent, q.description));
+        setMeta(n, `$${q.amount_usd} → ${q.chain}:${(q.receiver || "?").slice(0, 24)}`);
         setStatus(n, "success");
+        setTs(n, event.ts);
       }
     } else if (t === "agent.error") {
       const n = agentNodes[event.agent];
       if (n) {
-        setLabelText(n, `❌ ${event.agent} failed`);
-        setMetaText(n, String(event.error || "").slice(0, 80));
+        setLabel(n, T("agentFailed", event.agent));
+        setMeta(n, String(event.error || "").slice(0, 100));
         setStatus(n, "error");
+        setTs(n, event.ts);
       }
     } else if (t === "optimizer.thinking") {
       const n = makeNode({
-        kind: "optimizer",
-        label: `🧠 NEAR AI Cloud (${event.model}): optimizing combination...`,
-        meta: fmtTs(event.ts),
+        category: "nearai",
+        icon: "cloud",
+        label: T("optimizerThinking", event.model || "Qwen3-30B"),
+        meta: "",
+        status: "active",
+        ts: event.ts,
       });
-      agentNodes.optimizer = n;
+      agentNodes._optimizer = n;
     } else if (t === "optimizer.decided") {
-      const n = agentNodes.optimizer;
-      const d = event.decision;
+      const n = agentNodes._optimizer;
+      const d = event.decision || {};
       if (n) {
-        setLabelText(n, `🧠 NEAR AI: accepted [${(d.accepted || []).join(", ")}]`);
-        setMetaText(n, `$${d.total_usd} • ${(d.reasoning || "").slice(0, 80)}`);
+        const list = (d.accepted || []).map(a => a.replace("Agent","")).join(", ");
+        setLabel(n, T("optimizerDecided", list));
+        setMeta(n, `$${d.total_usd} • ${(d.reasoning || "").slice(0, 80)}`);
         setStatus(n, "success");
+        setTs(n, event.ts);
       }
+      // 採択結果を補助ノードとして再表示 (キラキラ用)
+      const list2 = (d.accepted || []).map(a => a.replace("Agent","")).join(", ");
+      makeNode({
+        category: "nearai",
+        icon: "star",
+        label: T("optimizerDecided", list2),
+        meta: `$${d.total_usd} • ${(d.reasoning || "").slice(0, 80)}`,
+        status: "success",
+        ts: event.ts,
+      });
     } else if (t === "optimizer.error") {
-      const n = agentNodes.optimizer;
+      const n = agentNodes._optimizer;
       if (n) {
-        setLabelText(n, "🧠 NEAR AI: error (fallback applied)");
-        setMetaText(n, String(event.error || "").slice(0, 100));
+        setLabel(n, T("optimizerError"));
+        setMeta(n, String(event.error || "").slice(0, 100));
         setStatus(n, "error");
+        setTs(n, event.ts);
       }
     } else if (t === "payment.sending") {
+      const cat = chainCategory(event.chain);
       const n = makeNode({
-        kind: "payment",
-        classes: [event.chain],
-        label: `💸 Paying ${event.agent} via ${event.chain.toUpperCase()}...`,
+        category: cat,
+        icon: "wallet",
+        label: T("paying", event.agent, event.chain),
         meta: `$${event.amount_usd}`,
+        status: "active",
+        ts: event.ts,
       });
       agentNodes["pay:" + event.agent] = n;
     } else if (t === "payment.confirmed") {
       const n = agentNodes["pay:" + event.agent];
-      const r = event.receipt;
+      const r = event.receipt || {};
       if (n) {
-        setLabelText(n, `✅ ${event.agent} paid via ${r.chain.toUpperCase()}`);
+        setLabel(n, T("paid", event.agent, r.chain));
         setMetaWithLink(n, `$${r.amount_usd} →`, {
-          text: (r.tx_hash || "").slice(0, 16) + "…",
+          text: `tx: ${(r.tx_hash || "").slice(0, 8)}...${(r.tx_hash || "").slice(-4)}`,
           href: r.explorer_url,
         });
         setStatus(n, "success");
+        n.classList.remove("cat-near", "cat-xrpl");
+        n.classList.add("cat-" + chainCategory(r.chain));
+        setIcon(n, "check");
+        setTs(n, event.ts);
       }
       appendReceipt(event.agent, r);
     } else if (t === "payment.failed") {
       const n = agentNodes["pay:" + event.agent];
       if (n) {
-        setLabelText(n, `❌ ${event.agent} payment failed (${event.chain})`);
-        setMetaText(n, String(event.error || "").slice(0, 120));
+        setLabel(n, T("payFailed", event.agent, event.chain));
+        setMeta(n, String(event.error || "").slice(0, 120));
         setStatus(n, "error");
+        setIcon(n, "error");
+        setTs(n, event.ts);
       }
     } else if (t === "flow.done") {
       makeNode({
-        kind: "done",
-        label: `🎉 Flow complete — total paid $${event.total_paid_usd}`,
-        meta: `${(event.receipts || []).length} on-chain transactions`,
-        status: "success",
+        category: "done",
+        icon: "finish",
+        label: T("flowDone", event.total_paid_usd),
+        meta: T("flowDoneMeta", (event.receipts || []).length),
+        status: "done",
+        ts: event.ts,
+        big: true,
       });
       runBtn.disabled = false;
     }

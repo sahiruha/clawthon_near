@@ -4,42 +4,116 @@
 <meta charset="utf-8" />
 <title>Agentic Travel Concierge — Clawathon Tokyo</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-<header>
-  <h1>🛰️ Agentic Travel Concierge</h1>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo" aria-hidden="true">
+      <svg viewBox="0 0 48 48" width="44" height="44">
+        <defs>
+          <linearGradient id="lg" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stop-color="#a855f7"/>
+            <stop offset="1" stop-color="#22d3ee"/>
+          </linearGradient>
+        </defs>
+        <circle cx="24" cy="24" r="22" fill="none" stroke="url(#lg)" stroke-width="1.5" opacity=".5"/>
+        <path d="M14 30 L24 14 L34 30 Z" fill="none" stroke="url(#lg)" stroke-width="2"/>
+        <circle cx="24" cy="24" r="3" fill="#a855f7"/>
+        <circle cx="38" cy="10" r="2" fill="#22d3ee"/>
+      </svg>
+    </div>
+    <div class="title">
+      <h1 data-i18n="appTitle">Agentic Travel Concierge</h1>
+      <div class="subtitle" data-i18n="appSubtitle">Clawathon Tokyo Edition</div>
+    </div>
+  </div>
+
   <div class="badges">
-    <span class="badge ironclaw">IronClaw</span>
-    <span class="badge near">NEAR AI Cloud</span>
-    <span class="badge near-chain">NEAR testnet</span>
-    <span class="badge xrpl">XRPL testnet</span>
+    <span class="badge ironclaw">✦ IronClaw</span>
+    <span class="badge nearai">✦ NEAR AI Cloud</span>
+    <span class="badge near">✦ NEAR testnet</span>
+    <span class="badge xrpl">✦ XRPL testnet</span>
+  </div>
+
+  <div class="topright">
+    <div class="lang-switch" role="group" aria-label="Language">
+      <button data-lang="ja" class="lang-btn active">日本語</button>
+      <button data-lang="en" class="lang-btn">English</button>
+    </div>
+    <div class="status-pill">
+      <span class="dot"></span>
+      <div>
+        <div class="status-title" data-i18n="statusTitle">System healthy</div>
+        <div class="status-sub" data-i18n="statusSub">All services operational</div>
+      </div>
+    </div>
   </div>
 </header>
 
-<main>
-  <section class="left">
-    <div class="prompt">
-      <textarea id="request" rows="3"
-        placeholder="例: 来週バンコクに行きたい、予算500ドル"></textarea>
-      <div class="row">
-        <label>Budget USD <input id="budget" type="number" value="500" /></label>
-        <button id="run">▶ Orchestrate</button>
+<main class="grid">
+
+  <aside class="left">
+
+    <section class="card">
+      <div class="card-head">
+        <span class="step-num">1</span>
+        <h2 data-i18n="step1Title">Natural-language request</h2>
       </div>
+      <textarea id="request" rows="6" data-i18n-ph="requestPlaceholder">来週バンコクに行きたい、予算500ドル</textarea>
+
+      <label class="field">
+        <span data-i18n="budgetLabel">Budget (USD)</span>
+        <input id="budget" type="number" value="500" />
+      </label>
+
+      <button id="run" class="btn-primary">
+        <span class="play">▶</span> <span data-i18n="orchestrate">Orchestrate</span>
+      </button>
+      <div class="endpoint-hint">POST /api/run</div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <span class="step-num">2</span>
+        <h2 data-i18n="step2Title">On-chain Receipts</h2>
+        <button class="ghost-btn" id="viewAll" type="button" data-i18n="viewAll">View all</button>
+      </div>
+      <div id="receipts" class="receipts-list">
+        <div class="receipts-empty" data-i18n="receiptsEmpty">No receipts yet — run an orchestration to see on-chain payments here.</div>
+      </div>
+    </section>
+
+  </aside>
+
+  <section class="right card">
+    <div class="card-head">
+      <span class="step-num">3</span>
+      <div class="head-title">
+        <h2 data-i18n="step3Title">Live Flow</h2>
+        <div class="subhead" data-i18n="step3Sub">Real-time orchestration timeline</div>
+      </div>
+      <label class="toggle">
+        <span data-i18n="autoscroll">Auto-scroll</span>
+        <input id="autoscroll" type="checkbox" checked />
+        <span class="switch"></span>
+      </label>
     </div>
 
-    <div class="receipts">
-      <h2>🧾 On-chain Receipts</h2>
-      <div id="receipts"></div>
+    <ol id="flow" class="flow"></ol>
+
+    <div class="flow-empty" id="flowEmpty" data-i18n-html="flowEmpty">
+      Press <strong>▶ Orchestrate</strong> to see the agents collaborate in real time.
     </div>
   </section>
 
-  <section class="right">
-    <h2>Live Flow</h2>
-    <div id="flow" class="flow"></div>
-  </section>
 </main>
 
+<script src="/static/i18n.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
